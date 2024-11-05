@@ -45,17 +45,15 @@ FROM (
 WHERE rank = 1;
 
 -- Q3: Identify the busiest day for each branch based on the number of transactions
-SELECT branch, day_name, no_transactions
-FROM (
-    SELECT 
-        branch,
-        DAYNAME(STR_TO_DATE(date, '%d/%m/%Y')) AS day_name,
-        COUNT(*) AS no_transactions,
-        RANK() OVER(PARTITION BY branch ORDER BY COUNT(*) DESC) AS rank
-    FROM walmart
-    GROUP BY branch, day_name
-) AS ranked
-WHERE rank = 1;
+with cte as (
+select branch, count(invoice_id) as no_of_transactions,
+Dense_rank() over (partition by branch order by count(invoice_id) desc) as Rank
+from walmart 
+group by 1
+order by 2 desc 
+)
+select branch,no_of_transactions from cte 
+where Rank=1 
 
 -- Q4: Calculate the total quantity of items sold per payment method
 SELECT 
@@ -77,7 +75,7 @@ GROUP BY city, category;
 -- Q6: Calculate the total profit for each category
 SELECT 
     category,
-    SUM(unit_price * quantity * profit_margin) AS total_profit
+    SUM(unit_price * profit_margin) AS total_profit
 FROM walmart
 GROUP BY category
 ORDER BY total_profit DESC;
@@ -110,29 +108,20 @@ GROUP BY branch, shift
 ORDER BY branch, num_invoices DESC;
 
 -- Q9: Identify the 5 branches with the highest revenue decrease ratio from last year to current year (e.g., 2022 to 2023)
-WITH revenue_2022 AS (
-    SELECT 
-        branch,
-        SUM(total) AS revenue
-    FROM walmart
-    WHERE YEAR(STR_TO_DATE(date, '%d/%m/%Y')) = 2022
-    GROUP BY branch
+with revenue_2022 as (
+select branch,sum(total) as total_revenue from walmart
+where extract(year from to_date(date,'DD/MM/YY'))=2022 
+group by 1 
 ),
-revenue_2023 AS (
-    SELECT 
-        branch,
-        SUM(total) AS revenue
-    FROM walmart
-    WHERE YEAR(STR_TO_DATE(date, '%d/%m/%Y')) = 2023
-    GROUP BY branch
+revenue_2023 as (
+select branch,sum(total) as total_revenue from walmart
+where extract(year from to_date(date,'DD/MM/YY'))=2023 
+group by 1 
 )
-SELECT 
-    r2022.branch,
-    r2022.revenue AS last_year_revenue,
-    r2023.revenue AS current_year_revenue,
-    ROUND(((r2022.revenue - r2023.revenue) / r2022.revenue) * 100, 2) AS revenue_decrease_ratio
-FROM revenue_2022 AS r2022
-JOIN revenue_2023 AS r2023 ON r2022.branch = r2023.branch
-WHERE r2022.revenue > r2023.revenue
-ORDER BY revenue_decrease_ratio DESC
-LIMIT 5;
+
+select r_2022.branch,r_2022.total_revenue as last_year_revenue,r_2023.total_revenue as current_year_revenue,
+(((r_2022.total_revenue - r_2023.total_revenue)/r_2022.total_revenue)*100) as revenue_decrease_ratio
+from revenue_2022 as r_2022 inner join revenue_2023 as r_2023 on r_2022.branch = r_2023.branch where 
+r_2022.total_revenue > r_2023.total_revenue
+order by 4 desc
+limit 5
